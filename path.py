@@ -68,6 +68,62 @@ import numpy as np
 from inverse_geometry import computeqgrasppose
 from tools import collision, setcubeplacement
 
+# def sample_cube_placement(robot, cube, cubeplacementq0, cubeplacementqgoal, viz=None):
+#     '''
+#     Sample a random cube placement within the robot's reachable area with no rotation,
+#     and solve for a valid robot configuration that can grasp the cube at this placement.
+    
+#     Parameters:
+#         robot: The robot object with its kinematic model.
+#         cube: The cube object representing the object to be grasped.
+#         cubeplacementq0: Initial placement of the cube as a reference point.
+#         cubeplacementqgoal: Goal placement of the cube as a reference point.
+#         viz: Optional visualization object for displaying sampled configurations.
+        
+#     Returns:
+#         A tuple (q, placement) where:
+#             - q is the robot configuration to grasp the cube at `placement`
+#             - placement is the SE3 position of the cube.
+#         Returns (None, None) if no valid placement is found.
+#     '''
+    
+#     # Define workspace bounds based on initial and goal placements, plus a margin
+#     x_min, x_max = min(cubeplacementq0.translation[0], cubeplacementqgoal.translation[0]) - 0.3, max(cubeplacementq0.translation[0], cubeplacementqgoal.translation[0]) + 0.3
+#     y_min, y_max = min(cubeplacementq0.translation[1], cubeplacementqgoal.translation[1]) - 0.3, max(cubeplacementq0.translation[1], cubeplacementqgoal.translation[1]) + 0.3
+#     z_min, z_max = min(cubeplacementq0.translation[2], cubeplacementqgoal.translation[2]) - 0.3, max(cubeplacementq0.translation[2], cubeplacementqgoal.translation[2]) + 0.3
+#     # x_min, x_max = min(cubeplacementq0.translation[0], cubeplacementqgoal.translation[0]), max(cubeplacementq0.translation[0], cubeplacementqgoal.translation[0]) + 0.5
+#     # y_min, y_max = min(cubeplacementq0.translation[1], cubeplacementqgoal.translation[1]), max(cubeplacementq0.translation[1], cubeplacementqgoal.translation[1]) + 0.5
+#     # z_min, z_max = min(cubeplacementq0.translation[2], cubeplacementqgoal.translation[2]), max(cubeplacementq0.translation[2], cubeplacementqgoal.translation[2]) + 0.5
+
+#     while True:
+#         # Randomly sample x, y, z within bounds
+#         x = np.random.uniform(x_min, x_max)
+#         y = np.random.uniform(y_min, y_max)
+#         z = np.random.uniform(z_min, z_max)
+        
+#         # Define the cube placement as an SE3 transform with no rotation
+#         placement = pin.SE3(pin.SE3.Identity().rotation, np.array([x, y, z]))
+
+#         # Use setcubeplacement to update the cube's placement
+#         setcubeplacement(robot, cube, placement)
+        
+#         # Check if the cube placement is in collision
+#         pin.updateGeometryPlacements(cube.model, cube.data, cube.collision_model, cube.collision_data)
+#         if pin.computeCollisions(cube.collision_model, cube.collision_data, False):
+#             # Skip this placement if in collision and resample
+#             continue
+        
+#         # Attempt to compute a robot configuration to grasp the cube at this placement
+#         q, success = computeqgrasppose(robot, robot.q0.copy(), cube, placement, viz)
+        
+#         # If a valid configuration is found, return it along with the cube placement
+#         if success:
+#             return q, placement
+        
+#         # Otherwise, resample if the configuration is invalid
+
+from tools import distanceToObstacle
+
 def sample_cube_placement(robot, cube, cubeplacementq0, cubeplacementqgoal, viz=None):
     '''
     Sample a random cube placement within the robot's reachable area with no rotation,
@@ -86,11 +142,12 @@ def sample_cube_placement(robot, cube, cubeplacementq0, cubeplacementqgoal, viz=
             - placement is the SE3 position of the cube.
         Returns (None, None) if no valid placement is found.
     '''
-    
     # Define workspace bounds based on initial and goal placements, plus a margin
     x_min, x_max = min(cubeplacementq0.translation[0], cubeplacementqgoal.translation[0]) - 0.3, max(cubeplacementq0.translation[0], cubeplacementqgoal.translation[0]) + 0.3
     y_min, y_max = min(cubeplacementq0.translation[1], cubeplacementqgoal.translation[1]) - 0.3, max(cubeplacementq0.translation[1], cubeplacementqgoal.translation[1]) + 0.3
     z_min, z_max = min(cubeplacementq0.translation[2], cubeplacementqgoal.translation[2]) - 0.3, max(cubeplacementq0.translation[2], cubeplacementqgoal.translation[2]) + 0.3
+
+    min_obstacle_distance = 0.035 # Define minimum allowable distance from obstacle
 
     while True:
         # Randomly sample x, y, z within bounds
@@ -109,15 +166,23 @@ def sample_cube_placement(robot, cube, cubeplacementq0, cubeplacementqgoal, viz=
         if pin.computeCollisions(cube.collision_model, cube.collision_data, False):
             # Skip this placement if in collision and resample
             continue
-        
+
         # Attempt to compute a robot configuration to grasp the cube at this placement
         q, success = computeqgrasppose(robot, robot.q0.copy(), cube, placement, viz)
         
-        # If a valid configuration is found, return it along with the cube placement
+        # Check distance to obstacle for the current configuration
         if success:
-            return q, placement
+            dist_to_obstacle = distanceToObstacle(robot, q)
+            print(f"Distance to obstacle for sampled configuration: {dist_to_obstacle}")
+
+            # Verify if the configuration meets the minimum distance requirement
+            if dist_to_obstacle >= min_obstacle_distance:
+                return q, placement
+            else:
+                print("Sampled placement too close to obstacle, resampling...")
         
-        # Otherwise, resample if the configuration is invalid
+        # Otherwise, resample if configuration is invalid or too close to the obstacle
+
 
 
 #This was the original code
@@ -287,9 +352,88 @@ def get_path(G):
 
 import numpy as np
 
-def computepath(robot, cube, q_init, q_goal, cubeplacement_q0, cubeplacement_qgoal, max_iterations=2000, step_size=0.1, goal_tolerance=0.5, viz=None):
+# def computepath(robot, cube, q_init, q_goal, cubeplacement_q0, cubeplacement_qgoal, max_iterations=2000, step_size=0.1, goal_tolerance=0.5, viz=None):
+#     '''
+#     RRT-based planner to compute a collision-free path from q_init to q_goal under grasping constraints with goal biasing.
+    
+#     Parameters:
+#         robot: The robot object with its kinematic model.
+#         cube: The cube object representing the object to be grasped.
+#         q_init: Initial configuration of the robot.
+#         q_goal: Goal configuration of the robot.
+#         cubeplacement_q0: Initial cube placement.
+#         cubeplacement_qgoal: Target cube placement.
+#         max_iterations: Maximum number of RRT iterations.
+#         step_size: Step size for path projection.
+#         goal_tolerance: Distance tolerance for reaching the goal.
+#         viz: Optional visualization object.
+    
+#     Returns:
+#         robot_path: List of robot configurations from q_init to q_goal.
+#         cube_path: Corresponding list of cube placements.
+#     '''
+    
+#     # Initialize the RRT graphs with the starting configuration and cube placement
+#     G_robot = [(None, q_init)]
+#     G_cube = [(None, cubeplacement_q0)]
+    
+#     for i in range(max_iterations):
+#         # Step 1: Sample a random configuration and cube placement with 10% goal bias
+#         if np.random.rand() < 0.1:
+#             q_rand = q_goal
+#             cube_rand = cubeplacement_qgoal
+#             print("Goal biasing applied.")
+#         else:
+#             q_rand, cube_rand = sample_cube_placement(robot, cube, cubeplacement_q0, cubeplacement_qgoal, viz=viz)
+        
+#         # Step 2: Find the nearest vertex in both graphs
+#         nearest_index = nearest_vertex(G_robot, q_rand)
+#         q_near = G_robot[nearest_index][1]
+#         cube_near = G_cube[nearest_index][1]
+        
+#         # Step 3: Project a path from q_near and cube_near to q_rand and cube_rand under grasping constraints
+#         robot_path_segment, cube_path_segment, _ = project_path(robot, cube, q_near, q_rand, cube_near, cube_rand, step_size=step_size, viz=viz)
+        
+#         # Add the longest valid segment found to the graphs, even if success is False
+#         if robot_path_segment and cube_path_segment:
+#             # Add each configuration pair from the path segment to the graphs with appropriate parent indexing
+#             for j in range(len(robot_path_segment)):
+#                 parent_index = len(G_robot) - 1 if j > 0 else nearest_index  # Link to previous node or q_near
+#                 add_edge_and_vertex(G_robot, G_cube, parent_index, robot_path_segment[j], cube_path_segment[j])
+#                 # print("Added edge and vertex.")
+#                 # print(f"Robot path length: {len(G_robot)}, Cube path length: {len(G_cube)}")
+                
+#             # Check if the last configuration in the segment has reached the goal
+#             if distance(robot_path_segment[-1], q_goal) < goal_tolerance:
+#                 print("Goal reached!")
+                
+#                 # Add the goal configuration to both graphs and retrieve the path
+#                 add_edge_and_vertex(G_robot, G_cube, len(G_robot) - 1, q_goal, cubeplacement_qgoal)
+                
+#                 # Reconstruct the final paths
+#                 final_robot_path = get_path(G_robot)
+#                 final_cube_path = get_path(G_cube)
+#                 # print(f"Is the first element the same? {final_robot_path[0] == q_init}")
+#                 # print(f"Is the last element the same? {final_robot_path[-1] == q_goal}")
+#                 #What about for the cube?
+#                 # print(f"Is the first element the same? {final_cube_path[0] == cubeplacement_q0}")
+#                 # print(f"Is the last element the same? {final_cube_path[-1] == cubeplacement_qgoal}")
+                
+#                 return final_robot_path, final_cube_path  # Path found
+            
+#         # Print how close we are to the goal every 10 iterations using nearest vertex to goal
+#         if i % 10 == 0:
+#             nearest_goal_index = nearest_vertex(G_robot, q_goal)
+#             print(f"Iteration {i}: Nearest to goal: {distance(G_robot[nearest_goal_index][1], q_goal)}")            
+    
+#     print("Max iterations reached without finding a good path. This is rare, so try again and/or increase the goal tolerance.")
+#     return [], []  # No valid path found
+
+import numpy as np
+
+def computepath(robot, cube, q_init, q_goal, cubeplacement_q0, cubeplacement_qgoal, max_iterations=2000, step_size=0.025, goal_tolerance=0.5, viz=None):
     '''
-    RRT-based planner to compute a collision-free path from q_init to q_goal under grasping constraints with goal biasing.
+    RRT-Connect-based planner to compute a collision-free path from q_init to q_goal under grasping constraints with bidirectional tree growth.
     
     Parameters:
         robot: The robot object with its kinematic model.
@@ -300,7 +444,7 @@ def computepath(robot, cube, q_init, q_goal, cubeplacement_q0, cubeplacement_qgo
         cubeplacement_qgoal: Target cube placement.
         max_iterations: Maximum number of RRT iterations.
         step_size: Step size for path projection.
-        goal_tolerance: Distance tolerance for reaching the goal.
+        goal_tolerance: Distance tolerance for connecting the trees.
         viz: Optional visualization object.
     
     Returns:
@@ -308,9 +452,11 @@ def computepath(robot, cube, q_init, q_goal, cubeplacement_q0, cubeplacement_qgo
         cube_path: Corresponding list of cube placements.
     '''
     
-    # Initialize the RRT graphs with the starting configuration and cube placement
-    G_robot = [(None, q_init)]
-    G_cube = [(None, cubeplacement_q0)]
+    # Initialize two trees: one starting from q_init, the other from q_goal
+    G_start = [(None, q_init)]
+    G_goal = [(None, q_goal)]
+    G_cube_start = [(None, cubeplacement_q0)]
+    G_cube_goal = [(None, cubeplacement_qgoal)]
     
     for i in range(max_iterations):
         # Step 1: Sample a random configuration and cube placement with 10% goal bias
@@ -321,49 +467,59 @@ def computepath(robot, cube, q_init, q_goal, cubeplacement_q0, cubeplacement_qgo
         else:
             q_rand, cube_rand = sample_cube_placement(robot, cube, cubeplacement_q0, cubeplacement_qgoal, viz=viz)
         
-        # Step 2: Find the nearest vertex in both graphs
-        nearest_index = nearest_vertex(G_robot, q_rand)
-        q_near = G_robot[nearest_index][1]
-        cube_near = G_cube[nearest_index][1]
+        # Step 2: Extend the start tree towards the sample
+        nearest_index_start = nearest_vertex(G_start, q_rand)
+        q_near_start = G_start[nearest_index_start][1]
+        cube_near_start = G_cube_start[nearest_index_start][1]
         
-        # Step 3: Project a path from q_near and cube_near to q_rand and cube_rand under grasping constraints
-        robot_path_segment, cube_path_segment, _ = project_path(robot, cube, q_near, q_rand, cube_near, cube_rand, step_size=step_size, viz=viz)
+        # Project path from start tree towards random sample
+        robot_path_segment, cube_path_segment, success = project_path(robot, cube, q_near_start, q_rand, cube_near_start, cube_rand, step_size=step_size, viz=viz)
         
-        # Add the longest valid segment found to the graphs, even if success is False
-        if robot_path_segment and cube_path_segment:
-            # Add each configuration pair from the path segment to the graphs with appropriate parent indexing
-            for j in range(len(robot_path_segment)):
-                parent_index = len(G_robot) - 1 if j > 0 else nearest_index  # Link to previous node or q_near
-                add_edge_and_vertex(G_robot, G_cube, parent_index, robot_path_segment[j], cube_path_segment[j])
-                print("Added edge and vertex.")
-                print(f"Robot path length: {len(G_robot)}, Cube path length: {len(G_cube)}")
-                
-            # Check if the last configuration in the segment has reached the goal
-            if distance(robot_path_segment[-1], q_goal) < goal_tolerance:
-                print("Goal reached!")
-                
-                # Add the goal configuration to both graphs and retrieve the path
-                add_edge_and_vertex(G_robot, G_cube, len(G_robot) - 1, q_goal, cubeplacement_qgoal)
-                
-                # Reconstruct the final paths
-                final_robot_path = get_path(G_robot)
-                final_cube_path = get_path(G_cube)
-                print(f"Is the first element the same? {final_robot_path[0] == q_init}")
-                print(f"Is the last element the same? {final_robot_path[-1] == q_goal}")
-                #What about for the cube?
-                print(f"Is the first element the same? {final_cube_path[0] == cubeplacement_q0}")
-                print(f"Is the last element the same? {final_cube_path[-1] == cubeplacement_qgoal}")
-                
-                return final_robot_path, final_cube_path  # Path found
+        # Add the path segment to the start tree
+        for j in range(len(robot_path_segment)):
+            parent_index = len(G_start) - 1 if j > 0 else nearest_index_start
+            add_edge_and_vertex(G_start, G_cube_start, parent_index, robot_path_segment[j], cube_path_segment[j])
+        
+        # Step 3: Attempt to connect the goal tree to the new node in the start tree
+        q_new_start = robot_path_segment[-1]
+        nearest_index_goal = nearest_vertex(G_goal, q_new_start)
+        q_near_goal = G_goal[nearest_index_goal][1]
+        cube_near_goal = G_cube_goal[nearest_index_goal][1]
+        
+        # Project path from goal tree towards the new node in the start tree
+        robot_path_segment_goal, cube_path_segment_goal, success = project_path(robot, cube, q_near_goal, q_new_start, cube_near_goal, cubeplacement_qgoal, step_size=step_size, viz=viz)
+        
+        # Add the path segment to the goal tree
+        for j in range(len(robot_path_segment_goal)):
+            parent_index = len(G_goal) - 1 if j > 0 else nearest_index_goal
+            add_edge_and_vertex(G_goal, G_cube_goal, parent_index, robot_path_segment_goal[j], cube_path_segment_goal[j])
+        
+        # Check if trees meet within goal tolerance
+        if distance(q_new_start, robot_path_segment_goal[-1]) < goal_tolerance:
+            print("Trees connected! Path found.")
             
-        # Print how close we are to the goal every 10 iterations using nearest vertex to goal
-        if i % 10 == 0:
-            nearest_goal_index = nearest_vertex(G_robot, q_goal)
-            print(f"Iteration {i}: Nearest to goal: {distance(G_robot[nearest_goal_index][1], q_goal)}")            
+            # Reconstruct paths from both trees and merge them
+            path_start_robot = get_path(G_start)
+            path_goal_robot = get_path(G_goal)
+            path_start_cube = get_path(G_cube_start)
+            path_goal_cube = get_path(G_cube_goal)
+            
+            # Combine paths, reversing the goal path
+            final_robot_path = path_start_robot + path_goal_robot[::-1]
+            final_cube_path = path_start_cube + path_goal_cube[::-1]
+            
+            return final_robot_path, final_cube_path
     
-    print("Max iterations reached without finding a path.")
+        # Optional: Print progress every 10 iterations
+        if i % 10 == 0:
+            nearest_goal_index = nearest_vertex(G_start, q_goal)
+            print(f"Iteration {i}: Nearest to goal: {distance(G_start[nearest_goal_index][1], q_goal)}")
+        
+        if i > 300: 
+            print("We are likely stuck in a local minimum. Ctrl+C and run again. This is very rare.")
+    
+    print("Max iterations reached without connecting the trees. This is rare, so try again and/or increase the goal tolerance.")
     return [], []  # No valid path found
-
 
 
 # Proof that it works for the initial configuration
@@ -388,7 +544,7 @@ if __name__ == "__main__":
         print("Initial and goal configurations successfully computed.")
         
         # Run RRT to find a path
-        robot_path, cube_path = computepath(robot, cube, q0, qe, CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET, max_iterations=1000, step_size=0.1, goal_tolerance=0.5, viz=None)
+        robot_path, cube_path = computepath(robot, cube, q0, qe, CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET, max_iterations=1000, step_size=0.025, goal_tolerance=0.5, viz=None)
         
         # Display the path if found
         if robot_path and cube_path:

@@ -226,7 +226,7 @@ class Simulation_base:
         # Finishing up and show no of joints
         print('[Simulation] Found '+str(len(self.jointIds))+' DOFs')
 
-    ########## Destructor ##########
+    ######## Destructor ##########
     def __del__(self):
         self.p.disconnect()
         time.sleep(1)

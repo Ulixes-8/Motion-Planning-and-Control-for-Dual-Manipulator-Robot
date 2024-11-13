@@ -38,7 +38,7 @@ def computeqgrasppose(robot, qcurrent, cube, cubetarget, viz=None):
 
         if norm(error_L) < EPSILON and norm(error_R) < EPSILON and not collision(robot, q):
             success = True 
-            # print("Success!")
+            # print("Successfully found a valid grasp pose.")
             break
 
         J_handL = pin.computeFrameJacobian(robot.model, robot.data, q, robot.model.getFrameId(LEFT_HAND))
@@ -310,3 +310,18 @@ if __name__ == "__main__":
 
     #     input(f"Press Enter to continue to the next placement...")
 
+
+
+# This is the original main method. 
+if __name__ == "__main__":
+    from tools import setupwithmeshcat
+    from setup_meshcat import updatevisuals
+    robot, cube, viz = setupwithmeshcat()
+    
+    q = robot.q0.copy()
+    
+    q0,successinit = computeqgrasppose(robot, q, cube, CUBE_PLACEMENT, viz)
+    qe,successend = computeqgrasppose(robot, q, cube, CUBE_PLACEMENT_TARGET,  viz)
+    
+    updatevisuals(viz, robot, cube, q0)
+    
