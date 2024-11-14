@@ -23,82 +23,24 @@ import numpy as np
 import pinocchio as pin
 
 
-
-# def sample_cube_placement(robot, cube, cubeplacementq0, cubeplacementqgoal, viz=None):
-
-#     margin = 0.3
-
-#     # Define workspace bounds based on initial and goal placements, plus a margin
-#     x_min, x_max = min(cubeplacementq0.translation[0], cubeplacementqgoal.translation[0]) - margin, max(cubeplacementq0.translation[0], cubeplacementqgoal.translation[0]) + margin
-#     y_min, y_max = min(cubeplacementq0.translation[1], cubeplacementqgoal.translation[1]) - margin, max(cubeplacementq0.translation[1], cubeplacementqgoal.translation[1]) + margin
-#     z_min, z_max = min(cubeplacementq0.translation[2], cubeplacementqgoal.translation[2]) - margin, max(cubeplacementq0.translation[2], cubeplacementqgoal.translation[2]) + margin
-
-#     # DO NOT CHANGE THIS VALUE OR IT WILL MOST LIKELY RESULT IN THE CONTROL PART FAILING.
-#     min_obstacle_distance = 0.035 # Define minimum allowable distance from obstacle
-
-#     while True:
-#         # Randomly sample x, y, z within bounds
-#         x = np.random.uniform(x_min, x_max)
-#         y = np.random.uniform(y_min, y_max)
-#         z = np.random.uniform(z_min, z_max)
-        
-#         # Define the cube placement as an SE3 transform with no rotation
-#         placement = pin.SE3(pin.SE3.Identity().rotation, np.array([x, y, z]))
-
-#         # Use setcubeplacement to update the cube's placement
-#         setcubeplacement(robot, cube, placement)
-        
-#         # Check if the cube placement is in collision
-#         pin.updateGeometryPlacements(cube.model, cube.data, cube.collision_model, cube.collision_data)
-#         if pin.computeCollisions(cube.collision_model, cube.collision_data, False):
-#             # Skip this placement if in collision and resample
-#             continue
-
-#         # Attempt to compute a robot configuration to grasp the cube at this placement
-#         q, success = computeqgrasppose(robot, robot.q0.copy(), cube, placement, viz)
-        
-#         # Check distance to obstacle for the current configuration
-#         if success:
-#             dist_to_obstacle = distanceToObstacle(robot, q)
-
-#             # Verify if the configuration meets the minimum distance requirement
-#             if dist_to_obstacle >= min_obstacle_distance:
-#                 print("Sampled placement and configuration are valid under all constraints, including distance to obstacle.")
-#                 print("Placement:", placement)
-#                 return q, placement
-#             else:
-#                 print("Sampled placement too close to obstacle, resampling...")
-        
-#         # Otherwise, resample if configuration is invalid or too close to the obstacle
-
+## Uniform sampler. 
 def sample_cube_placement(robot, cube, cubeplacementq0, cubeplacementqgoal, viz=None):
     """
-    Samples a feasible placement for the cube using Gaussian sampling centered 
-    above the fixed obstacle placement with dynamically defined bounds based on
-    the initial and goal placements.
+    Samples a feasible placement for the cube within specified bounds based on
+    the initial and goal placements, with a fixed range for the z-axis.
     """
     min_obstacle_distance = 0.04  # Minimum allowable distance from obstacles
 
-    # Fixed obstacle location
-    obstacle_position = np.array([0.43, -0.1, 0.94])
-    gaussian_center = obstacle_position + np.array([0.0, 0.0, 0.3])  # 15 cm above obstacle
+    # Define bounds based on cube placement and target
+    x_min, x_max = min(cubeplacementq0.translation[0], cubeplacementqgoal.translation[0]), max(cubeplacementq0.translation[0], cubeplacementqgoal.translation[0])
+    y_min, y_max = min(cubeplacementq0.translation[1], cubeplacementqgoal.translation[1]), max(cubeplacementq0.translation[1], cubeplacementqgoal.translation[1])
+    z_min, z_max = 1.05, 1.4  # Fixed bounds for z-axis
 
-    # Define dynamic bounds based on current cube placement and target, plus margin
-    margin = 0.3
-    x_min, x_max = min(cubeplacementq0.translation[0], cubeplacementqgoal.translation[0]) - margin, max(cubeplacementq0.translation[0], cubeplacementqgoal.translation[0]) + margin
-    y_min, y_max = min(cubeplacementq0.translation[1], cubeplacementqgoal.translation[1]) - margin, max(cubeplacementq0.translation[1], cubeplacementqgoal.translation[1]) + margin
-    z_min, z_max = min(cubeplacementq0.translation[2], cubeplacementqgoal.translation[2]) - margin, max(cubeplacementq0.translation[2], cubeplacementqgoal.translation[2]) + margin
-
-    # Standard deviations for Gaussian sampling (adjustable based on workspace and clearance needs)
-
-    std_dev_x = .3  # Spread in x-direction around obstacle
-    std_dev_y = .3 # Spread in y-direction around obstacle
-    std_dev_z = .3  # Smaller spread in z to focus samples slightly above obstacle
     while True:
-        # Sample x, y, z from a Gaussian distribution centered above the obstacle
-        x = np.clip(np.random.normal(gaussian_center[0], std_dev_x), x_min, x_max)
-        y = np.clip(np.random.normal(gaussian_center[1], std_dev_y), y_min, y_max)
-        z = np.clip(np.random.normal(gaussian_center[2], std_dev_z), z_min, z_max)
+        # Sample x, y, z within specified bounds
+        x = np.random.uniform(x_min, x_max)
+        y = np.random.uniform(y_min, y_max)
+        z = np.random.uniform(z_min, z_max)
         sampled_point = np.array([x, y, z])
 
         # Define the cube placement as an SE3 transform with no rotation
@@ -108,6 +50,7 @@ def sample_cube_placement(robot, cube, cubeplacementq0, cubeplacementqgoal, viz=
         # Check for collisions
         pin.updateGeometryPlacements(cube.model, cube.data, cube.collision_model, cube.collision_data)
         if pin.computeCollisions(cube.collision_model, cube.collision_data, False):
+            print("Cube placement in collision, resampling...")
             continue  # Resample if in collision
 
         # Attempt to compute a robot configuration to grasp the cube at this placement
@@ -123,8 +66,64 @@ def sample_cube_placement(robot, cube, cubeplacementq0, cubeplacementqgoal, viz=
             else:
                 print("Sampled placement too close to obstacle, resampling...")
 
+## Gaussian Sampler 
+# def sample_cube_placement(robot, cube, cubeplacementq0, cubeplacementqgoal, viz=None):
+#     """
+#     Samples a feasible placement for the cube using Gaussian sampling centered 
+#     above the fixed obstacle placement with dynamically defined bounds based on
+#     the initial and goal placements.
+#     """
+#     min_obstacle_distance = 0.04  # Minimum allowable distance from obstacles
+
+#     # Fixed obstacle location
+#     obstacle_position = np.array([0.43, -0.1, 0.94])
+#     gaussian_center = obstacle_position + np.array([0.0, 0.0, 0.3])  # Center above the obstacle
+#     # Experiment with the x and y centers... 
+#     # gaussian_center = obstacle_position + np.array([0.0, 0.0, 0.3])  
+
+#     # Define dynamic bounds based on current cube placement and target, plus margin
+#     margin = 0.12 # Test further 
+#     x_min, x_max = min(cubeplacementq0.translation[0], cubeplacementqgoal.translation[0]) - margin, max(cubeplacementq0.translation[0], cubeplacementqgoal.translation[0]) + margin
+#     y_min, y_max = min(cubeplacementq0.translation[1], cubeplacementqgoal.translation[1]) - margin, max(cubeplacementq0.translation[1], cubeplacementqgoal.translation[1]) + margin
+#     z_min, z_max = min(cubeplacementq0.translation[2], cubeplacementqgoal.translation[2]) - margin, max(cubeplacementq0.translation[2], cubeplacementqgoal.translation[2]) + margin
+
+#     # Standard deviations for Gaussian sampling (adjustable based on workspace and clearance needs)
+
+#     std_dev_x = .3  # Spread in x-direction around obstacle
+#     std_dev_y = .3 # Spread in y-direction around obstacle
+#     std_dev_z = .3  # Smaller spread in z to focus samples slightly above obstacle
+#     while True:
+#         # Sample x, y, z from a Gaussian distribution centered above the obstacle
+#         x = np.clip(np.random.normal(gaussian_center[0], std_dev_x), x_min, x_max)
+#         y = np.clip(np.random.normal(gaussian_center[1], std_dev_y), y_min, y_max)
+#         z = np.clip(np.random.normal(gaussian_center[2], std_dev_z), z_min, z_max)
+#         sampled_point = np.array([x, y, z])
+
+#         # Define the cube placement as an SE3 transform with no rotation
+#         placement = pin.SE3(pin.SE3.Identity().rotation, sampled_point)
+#         setcubeplacement(robot, cube, placement)
+
+#         # Check for collisions
+#         pin.updateGeometryPlacements(cube.model, cube.data, cube.collision_model, cube.collision_data)
+#         if pin.computeCollisions(cube.collision_model, cube.collision_data, False):
+#             print("Cube placement in collision, resampling...")
+#             continue  # Resample if in collision
+
+#         # Attempt to compute a robot configuration to grasp the cube at this placement
+#         q, success = computeqgrasppose(robot, robot.q0.copy(), cube, placement, viz)
+        
+#         if success:
+#             # Check distance to obstacle for the current configuration
+#             dist_to_obstacle = distanceToObstacle(robot, q)
+#             if dist_to_obstacle >= min_obstacle_distance:
+#                 print("Sampled placement and configuration are valid under all constraints.")
+#                 print("Placement:", placement)
+#                 return q, placement
+#             else:
+#                 print("Sampled placement too close to obstacle, resampling...")
+
 def project_path(robot, cube, q_curr, cube_curr, cube_rand, step_size=0.025, viz=None):
-    step_size = 0.1
+    # step_size = 0.1 # Test further
 
     # Calculate the number of interpolation steps based on step_size
     distance = np.linalg.norm(cube_curr.translation - cube_rand.translation)
@@ -197,10 +196,14 @@ def computepath(qinit, qgoal, cubeplacementq0, cubeplacementqgoal, robot=None, c
         print("Error: Robot and cube objects must be provided.")
         return []
     
-    max_iterations = 100
+    max_iterations = 250
     max_retries = 10
     step_size = 0.025
     goal_tolerance = 0.5
+    if __name__ == "__main__":
+        step_size = 0.1
+    else:
+        step_size = 0.025
 
     for retry in range(max_retries):
         G_start = [(None, qinit)]
@@ -275,9 +278,6 @@ def computepath(qinit, qgoal, cubeplacementq0, cubeplacementqgoal, robot=None, c
     return []
 
 
-
-
-
 #Original Main Method. 
 if __name__ == "__main__":
     from tools import setupwithmeshcat
@@ -285,7 +285,6 @@ if __name__ == "__main__":
     from inverse_geometry import computeqgrasppose
     
     robot, cube, viz = setupwithmeshcat()
-    
     
     q = robot.q0.copy()
     q0,successinit = computeqgrasppose(robot, q, cube, CUBE_PLACEMENT, viz=None)
@@ -295,8 +294,10 @@ if __name__ == "__main__":
         print ("error: invalid initial or end configuration")
     
     path = computepath(q0,qe,CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET, robot=robot, cube=cube)
+    # Please make sure that robot and cube are passed to compute path. 
+    # Note: we were allowed to make this API change according to Prof. Tonneau.
     
     if viz is not None:
-        displaypath(robot, path, dt=0.5, viz=viz)  # pass the actual viz object if initialized
+        displaypath(robot, path, dt=0.1, viz=viz)  # pass the actual viz object if initialized
     else:
         print("Visualization is not enabled.")

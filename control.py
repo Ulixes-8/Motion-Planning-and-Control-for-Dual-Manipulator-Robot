@@ -82,7 +82,7 @@ def maketraj(q0, q1, path_points, total_time):
 
     # Degree of the Bezier curve (ensure it's at least 3 for acceleration constraints)
     # degree = min(n_points + 3, 15)
-    degree = 15
+    degree = 20
     n_ctrl_pts = degree + 1  # Number of control points
 
     # Initial guess for control points (linear interpolation between q0 and q1)
@@ -154,7 +154,7 @@ def maketraj(q0, q1, path_points, total_time):
     constraints.append({'type': 'eq', 'fun': initial_acceleration_constraint})
     constraints.append({'type': 'eq', 'fun': final_acceleration_constraint})
 
-    bounds = None  # Set bounds if needed
+    bounds = None # No bounds on control points
 
 
     print("Optimization started... This may take a few mintues.") 
@@ -189,16 +189,12 @@ def maketraj(q0, q1, path_points, total_time):
     trajs = [q_of_t, vq_of_t, vvq_of_t]
     
     if result.fun < 0.15:
-        print("Optimization highly likely to have succeeded... If it fails, please run it one more time OR run the commented out main method at the bottom of control.py that has a pre-computed trajectory loaded! :D It works 99 percent of the time, but the process is pretty slow.")
+        print("Optimization highly likely to have succeeded... If it fails, please run it one more time OR run the commented out main method at the bottom of control.py that has a pre-computed trajectory loaded! :D It works 90 percent of the time (45 out of every 50 trials are successful), but the process is pretty slow.")
         return trajs, True
     print("Optimization likely to have failed. Re-running.")
     return trajs, False
     
     # return trajs, True
-
-
-
-
 
 import json
 import numpy as np
@@ -218,7 +214,6 @@ def save_trajectory_to_json(filename, q_of_t, vq_of_t, vvq_of_t):
         json.dump(trajectory_data, f, indent=4)
     print(f"Trajectory saved to {filename}")
 
-# Example usage
 
 # Function to load trajectory control points from a JSON file and reconstruct Bezier objects
 def load_trajectory_from_json(filename):
@@ -249,11 +244,6 @@ def controllaw(sim, robot, trajs, tcurrent, cube):
     import pinocchio as pin
     import quadprog  # Import quadprog for QP solving
     # from tools import distanceToObstacle
-
-    # Kp = 7000.0               # Proportional gain
-    # Kv = 2 * np.sqrt(Kp)     # Derivative gain
-    # Kf = 30             # Force gain
-    # Kt = 2 * np.sqrt(Kf)                # Torque gain
     
     Kp = 7000.0               # Proportional gain
     Kv = 2 * np.sqrt(Kp)     # Derivative gain
@@ -266,15 +256,13 @@ def controllaw(sim, robot, trajs, tcurrent, cube):
     vq = np.array(vq)
     
     
-    
-    # # TEST ##########################################
+    # # TESTING A DUMB IDEA ##########################################
     # dist = distanceToObstacle(robot, q)
     # # print(f"Distance to obstacle: {dist}")
     # d_term = 1300.0
     # # Threshold distance for obstacle avoidance
     # dist_threshold = 0.2  # Define a reasonable distance threshold
     # avoidance_gain = 1.0 / max(dist, dist_threshold)  # Increase influence as distance decreases
-    
     
 
     # Desired joint positions, velocities, and accelerations from trajectory
@@ -349,17 +337,6 @@ def controllaw(sim, robot, trajs, tcurrent, cube):
         # Desired end-effector acceleration (PD control)
         x_ddot_desired = Kp * e + Kv * e_dot  # 6D vector 
         
-        # # TEST ##########################################
-        #     # Calculate the repulsive force based on the distance to obstacle
-        # if dist < dist_threshold:
-        #     repulsive_force = avoidance_gain * e_translation  # Direction away from obstacle
-        #     # Optionally scale repulsive force with distance if needed
-        #     repulsive_force = d_term * repulsive_force  # Adjust based on proportional gain
-        #     print(f"Repulsive force: {repulsive_force}")
-
-        #     # Add the repulsive force to the desired end-effector acceleration
-        #     x_ddot_desired[:3] -= repulsive_force  # Reduces acceleration toward the obstacle
-
         # Compute Jacobian and its time derivative at the current state
         J = pin.computeFrameJacobian(
             robot.model, robot.data, q, ee_frame_id, pin.ReferenceFrame.LOCAL_WORLD_ALIGNED)
@@ -395,7 +372,7 @@ def controllaw(sim, robot, trajs, tcurrent, cube):
     f_c_total = np.hstack(f_c_stack)
     
     # Bias for f_c_total in linear y axis to make the robot move in the y direction.
-    f_c_total[1] -= 125
+    f_c_total[1] -= 200
     
 
     # Formulate the QP problem
@@ -438,10 +415,7 @@ def controllaw(sim, robot, trajs, tcurrent, cube):
 # Main code
 if __name__ == "__main__":
 
-    # Import necessary modules and functions
     from tools import setupwithpybullet, setupwithpybulletandmeshcat, rununtil
-    
-
     robot, sim, cube, viz = setupwithpybulletandmeshcat()
     
 
@@ -454,7 +428,10 @@ if __name__ == "__main__":
     start = time.time()
     
     flag = False
-    while flag == False:    
+    while flag == False:    ##################### DO NOT CHANGE !!!!!!!!!!!!!!!!!!!! #####################
+        
+        
+        # You can change cube placements, q0, qe, path. Do not change any other hyperparameters, please! 
         q0, successinit = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT, None)
         qe, successend = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT_TARGET, None)
         path = computepath(q0, qe, CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET, robot=robot, cube=cube)
@@ -466,10 +443,10 @@ if __name__ == "__main__":
         # # Setting initial configuration
         sim.setqsim(q0)
 
-        total_time = 15.0 # DO NOT CHANGE !!!!!!!!!!!!!!!!!!!!
+        total_time = 15.0 ##################### DO NOT CHANGE !!!!!!!!!!!!!!!!!!!! #####################
         
         tcur = 0.0
-        DT = 0.01  # DO NOT CHANGE !!!!!!!!!!!!!!!!!!!!
+        DT = 0.01  ##################### DO NOT CHANGE !!!!!!!!!!!!!!!!!!!! #####################
 
         # # # # # # Compute the trajectory
         trajs, flag = maketraj(q0, qe, path_points, total_time)
@@ -477,61 +454,18 @@ if __name__ == "__main__":
     q_of_t, vq_of_t, vvq_of_t = trajs
     trajs = (q_of_t, vq_of_t, vvq_of_t)
 
-    # Evaluate the trajectory
-    t_sample = np.linspace(0, total_time, 100)
-    q_samples = np.array([q_of_t(t) for t in t_sample])  # Shape: (100, dim)
-    vq_samples = np.array([vq_of_t(t) for t in t_sample])
-    vvq_samples = np.array([vvq_of_t(t) for t in t_sample])
-
-    # # Times corresponding to path points
-    times = np.linspace(0, total_time, n_points)
-
     # End timer
     end = time.time()
     print(f"Time taken for path planning + compute trajectory: {end - start} seconds")
     
-    
-    # Plot positions
-    for joint_idx in range(dim):
-        plt.figure()
-        plt.plot(times, path_points[:, joint_idx], 'rx', label='Path Points')
-        plt.plot(t_sample, q_samples[:, joint_idx], 'b-', label='Bezier Trajectory')
-        plt.title(f'Joint {joint_idx + 1} Position')
-        plt.xlabel('Time (s)')
-        plt.ylabel('Joint Angle (rad)')
-        plt.legend()
-        plt.grid(True)
-        plt.show()
-        break
-
-    # # Plot velocities
-    # for joint_idx in range(dim):
-    #     plt.figure()
-    #     plt.plot(t_sample, vq_samples[:, joint_idx], 'g-', label='Velocity')
-    #     plt.title(f'Joint {joint_idx + 1} Velocity')
-    #     plt.xlabel('Time (s)')
-    #     plt.ylabel('Velocity (rad/s)')
-    #     plt.grid(True)
-    #     plt.show()
-
-    # # Plot accelerations
-    # for joint_idx in range(dim):
-    #     plt.figure()
-    #     plt.plot(t_sample, vvq_samples[:, joint_idx], 'm-', label='Acceleration')
-    #     plt.title(f'Joint {joint_idx + 1} Acceleration')
-    #     plt.xlabel('Time (s)')
-    #     plt.ylabel('Acceleration (rad/s²)')
-    #     plt.grid(True)
-    #     plt.show()
-
-
     while tcur < total_time:
         rununtil(controllaw, DT, sim, robot, trajs, tcur, cube)
         tcur += DT
         
         
 
-# # Uncomment the below to see a pre-computed trajectory. 
+#################Uncomment the below to see a pre-computed trajectory! ########################################
+
 # if __name__ == "__main__":
 
 #     # Import necessary modules and functions
@@ -551,10 +485,10 @@ if __name__ == "__main__":
 
 #     sim.setqsim(q0)
 
-#     total_time = 15.0 # DO NOT ADJUST
+#     total_time = 15.0 ##################### DO NOT CHANGE !!!!!!!!!!!!!!!!!!!! #####################
     
 #     tcur = 0.0 
-#     DT = 0.01  # DO NOT ADJUST
+#     DT = 0.01  ##################### DO NOT CHANGE !!!!!!!!!!!!!!!!!!!! #####################
 
 
 #     q_of_t, vq_of_t, vvq_of_t = load_trajectory_from_json('trajectory.json') # Pre-computed trajectory

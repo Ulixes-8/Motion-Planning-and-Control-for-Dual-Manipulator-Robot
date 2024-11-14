@@ -10,64 +10,9 @@ import numpy as np
 
 from bezier import Bezier
     
-# in my solution these gains were good enough for all joints but you might want to tune this.
-Kp = 300.               # proportional gain (P of PD)
-Kv = 2 * np.sqrt(Kp)   # derivative gain (D of PD)
-
-def controllaw(sim, robot, trajs, tcurrent, cube):
-    q, vq = sim.getpybulletstate()
-    #TODO 
-    torques = [0.0 for _ in sim.bulletCtrlJointsInPinOrder]
-    sim.step(torques)
-
-# if __name__ == "__main__":
-        
-#     from tools import setupwithpybullet, setupwithpybulletandmeshcat, rununtil
-#     from config import DT
-    
-#     robot, sim, cube = setupwithpybullet()
-    
-    
-#     from config import CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET    
-#     from inverse_geometry import computeqgrasppose
-#     from path import computepath
-    
-#     q0,successinit = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT, None)
-#     qe,successend = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT_TARGET,  None)
-#     # path = computepath(q0,qe,CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET) # This was the original. Fix the signature before submitting.
-#     # path = computepath(robot, cube, q0,qe,CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)
-
-    
-#     #setting initial configuration
-#     sim.setqsim(q0)
-    
-    
-#     #TODO this is just an example, you are free to do as you please.
-#     #In any case this trajectory does not follow the path 
-#     #0 init and end velocities
-#     def maketraj(q0,q1,T): #TODO compute a real trajectory !
-#         q_of_t = Bezier([q0,q0,q1,q1],t_max=T)
-#         vq_of_t = q_of_t.derivative(1)
-#         vvq_of_t = vq_of_t.derivative(1)
-#         return q_of_t, vq_of_t, vvq_of_t
-    
-    
-#     #TODO this is just a random trajectory, you need to do this yourself
-#     total_time=4.
-#     trajs = maketraj(q0, qe, total_time)   
-    
-#     tcur = 0.
-    
-    
-#     while tcur < total_time:
-#         rununtil(controllaw, DT, sim, robot, trajs, tcur, cube)
-#         tcur += DT
-
 import numpy as np
 from scipy.optimize import minimize
 import matplotlib.pyplot as plt
-
-
 
 
 class Bezier:   
@@ -115,7 +60,7 @@ class Bezier:
         return deriv.derivative(order - 1)
 
 # Best performing maketraj 
-def maketraj(robot, cube, q0, q1, path_points, total_time):
+def maketraj(q0, q1, path_points, total_time):
     """
     Compute a Bézier trajectory that fits the given path using SLSQP and your Bezier class.
 
@@ -136,7 +81,8 @@ def maketraj(robot, cube, q0, q1, path_points, total_time):
     dim = q0.shape[0]  # Number of joints
 
     # Degree of the Bezier curve (ensure it's at least 3 for acceleration constraints)
-    degree = min(n_points + 3, 15)
+    # degree = min(n_points + 3, 15)
+    degree = 20
     n_ctrl_pts = degree + 1  # Number of control points
 
     # Initial guess for control points (linear interpolation between q0 and q1)
@@ -208,7 +154,7 @@ def maketraj(robot, cube, q0, q1, path_points, total_time):
     constraints.append({'type': 'eq', 'fun': initial_acceleration_constraint})
     constraints.append({'type': 'eq', 'fun': final_acceleration_constraint})
 
-    bounds = None  # Set bounds if needed
+    bounds = None # No bounds on control points
 
 
     print("Optimization started... This may take a few mintues.") 
@@ -235,17 +181,21 @@ def maketraj(robot, cube, q0, q1, path_points, total_time):
     vq_of_t = q_of_t.derivative(1)
     vvq_of_t = q_of_t.derivative(2)
     
-    # Save the trajectory to a JSON file so we can de-bug controllaw quickly. 
-    if result.fun < 0.1:
-        save_trajectory_to_json('trajectory.json', q_of_t, vq_of_t, vvq_of_t)
+    # # Save the trajectory to a JSON file so we can de-bug controllaw quickly. 
+    if result.fun < 0.15:
+        save_trajectory_to_json('trajectory2.json', q_of_t, vq_of_t, vvq_of_t)
+    # save_trajectory_to_json('trajectory2.json', q_of_t, vq_of_t, vvq_of_t)
     
     trajs = [q_of_t, vq_of_t, vvq_of_t]
     
-    if result.fun < 0.1:
-        print("Optimization highly likely to have succeeded... If it fails, please run it one more time! :D It works 99 percent of the time.")
+    if result.fun < 0.15:
+        print("Optimization highly likely to have succeeded... If it fails, please run it one more time OR run the commented out main method at the bottom of control.py that has a pre-computed trajectory loaded! :D It works 90 percent of the time (45 out of every 50 trials are successful), but the process is pretty slow.")
         return trajs, True
     print("Optimization likely to have failed. Re-running.")
     return trajs, False
+    
+    # return trajs, True
+
 
 
 
@@ -268,7 +218,6 @@ def save_trajectory_to_json(filename, q_of_t, vq_of_t, vvq_of_t):
         json.dump(trajectory_data, f, indent=4)
     print(f"Trajectory saved to {filename}")
 
-# Example usage
 
 # Function to load trajectory control points from a JSON file and reconstruct Bezier objects
 def load_trajectory_from_json(filename):
@@ -298,12 +247,9 @@ def controllaw(sim, robot, trajs, tcurrent, cube):
     import numpy as np
     import pinocchio as pin
     import quadprog  # Import quadprog for QP solving
-    from tools import distanceToObstacle
+    # from tools import distanceToObstacle
 
-    # Kp = 7000.0               # Proportional gain
-    # Kv = 2 * np.sqrt(Kp)     # Derivative gain
-    # Kf = 30             # Force gain
-    # Kt = 2 * np.sqrt(Kf)                # Torque gain
+
     
     Kp = 7000.0               # Proportional gain
     Kv = 2 * np.sqrt(Kp)     # Derivative gain
@@ -356,14 +302,14 @@ def controllaw(sim, robot, trajs, tcurrent, cube):
     pin.updateFramePlacements(robot.model, data_des)
 
     # Initialize variables for stacking
-    num_ee = len(ee_frame_ids)
-    task_dim = 6 * num_ee  # Control in XYZ and orientation for each end-effector
+    # num_ee = len(ee_frame_ids)
+    # task_dim = 6 * num_ee  # Control in XYZ and orientation for each end-effector
     J_stack = []
     J_dot_v_stack = []
     x_ddot_des_stack = []
     f_c_stack = []
 
-    for i, ee_frame_id in enumerate(ee_frame_ids):
+    for _, ee_frame_id in enumerate(ee_frame_ids):
         # Current end-effector pose and velocity
         oMee = robot.data.oMf[ee_frame_id]
         x_current = oMee.translation.copy()
@@ -399,17 +345,6 @@ def controllaw(sim, robot, trajs, tcurrent, cube):
         # Desired end-effector acceleration (PD control)
         x_ddot_desired = Kp * e + Kv * e_dot  # 6D vector 
         
-        # # TEST ##########################################
-        #     # Calculate the repulsive force based on the distance to obstacle
-        # if dist < dist_threshold:
-        #     repulsive_force = avoidance_gain * e_translation  # Direction away from obstacle
-        #     # Optionally scale repulsive force with distance if needed
-        #     repulsive_force = d_term * repulsive_force  # Adjust based on proportional gain
-        #     print(f"Repulsive force: {repulsive_force}")
-
-        #     # Add the repulsive force to the desired end-effector acceleration
-        #     x_ddot_desired[:3] -= repulsive_force  # Reduces acceleration toward the obstacle
-
         # Compute Jacobian and its time derivative at the current state
         J = pin.computeFrameJacobian(
             robot.model, robot.data, q, ee_frame_id, pin.ReferenceFrame.LOCAL_WORLD_ALIGNED)
@@ -445,7 +380,7 @@ def controllaw(sim, robot, trajs, tcurrent, cube):
     f_c_total = np.hstack(f_c_stack)
     
     # Bias for f_c_total in linear y axis to make the robot move in the y direction.
-    f_c_total[1] -= 125
+    f_c_total[1] -= 200
     
 
     # Formulate the QP problem
@@ -485,9 +420,103 @@ def controllaw(sim, robot, trajs, tcurrent, cube):
 
 
 
+# Main code
+if __name__ == "__main__":
+
+    # Import necessary modules and functions
+    from tools import setupwithpybullet, setupwithpybulletandmeshcat, rununtil
+    
+
+    robot, sim, cube, viz = setupwithpybulletandmeshcat()
+    
+
+    from config import CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET
+    from inverse_geometry import computeqgrasppose
+    from path import computepath
+
+    # Start timer 
+    import time
+    start = time.time()
+    
+    flag = False
+    while flag == False:    
+        q0, successinit = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT, None)
+        qe, successend = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT_TARGET, None)
+        path = computepath(q0, qe, CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET, robot=robot, cube=cube)
+
+        path_points = np.array(path)  # Should have shape (n_points, dim)
+        n_points = len(path_points)
+        dim = q0.shape[0]
+
+        # # Setting initial configuration
+        sim.setqsim(q0)
+
+        total_time = 15.0 # DO NOT CHANGE !!!!!!!!!!!!!!!!!!!!
+        
+        tcur = 0.0
+        DT = 0.01  # DO NOT CHANGE !!!!!!!!!!!!!!!!!!!!
+
+        # # # # # # Compute the trajectory
+        trajs, flag = maketraj(q0, qe, path_points, total_time)
+    
+    q_of_t, vq_of_t, vvq_of_t = trajs
+    trajs = (q_of_t, vq_of_t, vvq_of_t)
+
+    # Evaluate the trajectory
+    t_sample = np.linspace(0, total_time, 100)
+    q_samples = np.array([q_of_t(t) for t in t_sample])  # Shape: (100, dim)
+    vq_samples = np.array([vq_of_t(t) for t in t_sample])
+    vvq_samples = np.array([vvq_of_t(t) for t in t_sample])
+
+    # # Times corresponding to path points
+    times = np.linspace(0, total_time, n_points)
+
+    # End timer
+    end = time.time()
+    print(f"Time taken for path planning + compute trajectory: {end - start} seconds")
+    
+    
+    # Plot positions
+    for joint_idx in range(dim):
+        plt.figure()
+        plt.plot(times, path_points[:, joint_idx], 'rx', label='Path Points')
+        plt.plot(t_sample, q_samples[:, joint_idx], 'b-', label='Bezier Trajectory')
+        plt.title(f'Joint {joint_idx + 1} Position')
+        plt.xlabel('Time (s)')
+        plt.ylabel('Joint Angle (rad)')
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+        break
+
+    # # Plot velocities
+    # for joint_idx in range(dim):
+    #     plt.figure()
+    #     plt.plot(t_sample, vq_samples[:, joint_idx], 'g-', label='Velocity')
+    #     plt.title(f'Joint {joint_idx + 1} Velocity')
+    #     plt.xlabel('Time (s)')
+    #     plt.ylabel('Velocity (rad/s)')
+    #     plt.grid(True)
+    #     plt.show()
+
+    # # Plot accelerations
+    # for joint_idx in range(dim):
+    #     plt.figure()
+    #     plt.plot(t_sample, vvq_samples[:, joint_idx], 'm-', label='Acceleration')
+    #     plt.title(f'Joint {joint_idx + 1} Acceleration')
+    #     plt.xlabel('Time (s)')
+    #     plt.ylabel('Acceleration (rad/s²)')
+    #     plt.grid(True)
+    #     plt.show()
 
 
-# # Main code
+    while tcur < total_time:
+        rununtil(controllaw, DT, sim, robot, trajs, tcur, cube)
+        tcur += DT
+        
+        
+
+# # Uncomment the below to see a pre-computed trajectory. 
 # if __name__ == "__main__":
 
 #     # Import necessary modules and functions
@@ -502,115 +531,25 @@ def controllaw(sim, robot, trajs, tcurrent, cube):
 #     from inverse_geometry import computeqgrasppose
 #     from path import computepath
 
-#     flag = False
-#     while flag == False:    
-#         q0, successinit = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT, None)
-#         qe, successend = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT_TARGET, None)
-#         path = computepath(q0, qe, CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET, robot=robot, cube=cube)
+#     q0, successinit = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT, None)
+#     qe, successend = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT_TARGET, None)
 
-#         # # # # # Extract the robot's path
-#         robot_path = path  # Assuming path[0] is the robot's path
-#         path_points = np.array(robot_path)  # Should have shape (n_points, dim)
-#         n_points = len(path_points)
-#         dim = q0.shape[0]
+#     sim.setqsim(q0)
 
-#         # # Setting initial configuration
-#         sim.setqsim(q0)
-
-#         total_time = 15.0
-        
-#         tcur = 0.0
-#         DT = 0.01  # Time step, adjust as needed
-
-#         # # # # # # Compute the trajectory
-#         trajs, flag = maketraj(robot, cube, q0, qe, path_points, total_time)
+#     total_time = 15.0 # DO NOT ADJUST
     
-#     q_of_t, vq_of_t, vvq_of_t = trajs
+#     tcur = 0.0 
+#     DT = 0.01  # DO NOT ADJUST
+
+
+#     q_of_t, vq_of_t, vvq_of_t = load_trajectory_from_json('trajectory.json') # Pre-computed trajectory
 #     trajs = (q_of_t, vq_of_t, vvq_of_t)
 
-#     # Evaluate the trajectory
-#     t_sample = np.linspace(0, total_time, 100)
-#     q_samples = np.array([q_of_t(t) for t in t_sample])  # Shape: (100, dim)
-#     vq_samples = np.array([vq_of_t(t) for t in t_sample])
-#     vvq_samples = np.array([vvq_of_t(t) for t in t_sample])
-
-#     # # Times corresponding to path points
-#     times = np.linspace(0, total_time, n_points)
-
-
-#     # Plot positions
-#     for joint_idx in range(dim):
-#         plt.figure()
-#         plt.plot(times, path_points[:, joint_idx], 'rx', label='Path Points')
-#         plt.plot(t_sample, q_samples[:, joint_idx], 'b-', label='Bezier Trajectory')
-#         plt.title(f'Joint {joint_idx + 1} Position')
-#         plt.xlabel('Time (s)')
-#         plt.ylabel('Joint Angle (rad)')
-#         plt.legend()
-#         plt.grid(True)
-#         plt.show()
-
-#     # # Plot velocities
-#     # for joint_idx in range(dim):
-#     #     plt.figure()
-#     #     plt.plot(t_sample, vq_samples[:, joint_idx], 'g-', label='Velocity')
-#     #     plt.title(f'Joint {joint_idx + 1} Velocity')
-#     #     plt.xlabel('Time (s)')
-#     #     plt.ylabel('Velocity (rad/s)')
-#     #     plt.grid(True)
-#     #     plt.show()
-
-#     # # Plot accelerations
-#     # for joint_idx in range(dim):
-#     #     plt.figure()
-#     #     plt.plot(t_sample, vvq_samples[:, joint_idx], 'm-', label='Acceleration')
-#     #     plt.title(f'Joint {joint_idx + 1} Acceleration')
-#     #     plt.xlabel('Time (s)')
-#     #     plt.ylabel('Acceleration (rad/s²)')
-#     #     plt.grid(True)
-#     #     plt.show()
 
 
 #     while tcur < total_time:
 #         rununtil(controllaw, DT, sim, robot, trajs, tcur, cube)
 #         tcur += DT
-        
-        
-
-# Control Law Testing
-if __name__ == "__main__":
-
-    # Import necessary modules and functions
-    from tools import setupwithpybullet, setupwithpybulletandmeshcat, rununtil
-    from config import DT
-    
-
-    robot, sim, cube, viz = setupwithpybulletandmeshcat()
-    
-
-    from config import CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET
-    from inverse_geometry import computeqgrasppose
-    from path import computepath
-
-    q0, successinit = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT, None)
-    qe, successend = computeqgrasppose(robot, robot.q0, cube, CUBE_PLACEMENT_TARGET, None)
-
-    sim.setqsim(q0)
-
-    total_time = 15.0 # DO NOT ADJUST
-    
-    tcur = 0.0 
-    DT = 0.01  # DO NOT ADJUST
-
-
-    q_of_t, vq_of_t, vvq_of_t = load_trajectory_from_json('trajectory.json') # NEar perfect trajectory
-    trajs = (q_of_t, vq_of_t, vvq_of_t)
-
-
-
-    while tcur < total_time:
-        rununtil(controllaw, DT, sim, robot, trajs, tcur, cube)
-        tcur += DT
         
 
     
