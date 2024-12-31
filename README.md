@@ -1,4 +1,4 @@
-This software was written to solve a coursework assignment at the University of Edinburgh. The course is titled "Advanced Robotics". It received a final mark of 100%. Most of the work is in control.py, path.py, and inverse_geometry.py.
+This software was written to solve a coursework assignment at the University of Edinburgh. The course is titled "Advanced Robotics". It received a final mark of 100%, which was the highest mark awarded this year. Most of the work is in **control.py, path.py, and inverse_geometry.py**.
 
 A detailed report of the software can be found [here](https://drive.google.com/file/d/10zo4TWWDlOM3nlfkRpiw888XQgvwbM0A/view?usp=sharing), which includes links to video demonstrations. 
 
