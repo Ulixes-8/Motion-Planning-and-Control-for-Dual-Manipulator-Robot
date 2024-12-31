@@ -1,3 +1,5 @@
+This software was written to solve a coursework assignment at the University of Edinburgh. The course is titled "Advanced Robotics". It received a final mark of 100%. 
+
 # Advanced Robotics (INFR112132022) software labs
 
 These instructions are written for ARO labs regarding set up on DICE environment.
