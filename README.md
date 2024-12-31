@@ -1,4 +1,4 @@
-This software was written to solve a coursework assignment at the University of Edinburgh. The course is titled "Advanced Robotics". It received a final mark of 100%. 
+This software was written to solve a coursework assignment at the University of Edinburgh. The course is titled "Advanced Robotics". It received a final mark of 100%. Most of the work is in control.py, path.py, and inverse_geometry.py.
 
 # Advanced Robotics (INFR112132022) software labs
 
